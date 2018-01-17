@@ -21,6 +21,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <iostream>
 
 #include "util/util.h"
 #include "util/logging.h"
@@ -201,11 +202,14 @@ void RE2::Init(const StringPiece& pattern, const Options& options) {
   }
 
   re2::Regexp* suffix;
-  if (entire_regexp_->RequiredPrefix(&prefix_, &prefix_foldcase_, &suffix))
+  if (entire_regexp_->RequiredPrefix(&prefix_, &prefix_foldcase_, &suffix)){
     suffix_regexp_ = suffix;
-  else
+    //std::cout<<"get prefix: "<<prefix_<<std::endl;
+    //std::cout<<"get suffix: "<<suffix<<std::endl;
+  }else{
     suffix_regexp_ = entire_regexp_->Incref();
-
+    //std::cout<<"no prefix only get suffix: "<<suffix_regexp_<<std::endl;
+  }
   // Two thirds of the memory goes to the forward Prog,
   // one third to the reverse prog, because the forward
   // Prog has two DFAs but the reverse prog has one.
@@ -286,6 +290,7 @@ int RE2::NumberOfCapturingGroups() const {
     if (re->suffix_regexp_ != NULL)
       re->num_captures_ = re->suffix_regexp_->NumCaptures();
   }, this);
+  //std::cout<<"num of capturing groups: "<<num_captures_<<std::endl;
   return num_captures_;
 }
 
@@ -586,8 +591,10 @@ bool RE2::Match(const StringPiece& text,
     matchp = NULL;
 
   int ncap = 1 + NumberOfCapturingGroups();
+  //std::cout<<"before changing in Match ncap: "<<ncap<<" nsubmatch: "<<nsubmatch<<std::endl;
   if (ncap > nsubmatch)
     ncap = nsubmatch;
+  //std::cout<<"after changing in Match ncap: "<<ncap<<" nsubmatch: "<<nsubmatch<<std::endl;
 
   // If the regexp is anchored explicitly, must not be in middle of text.
   if (prog_->anchor_start() && startpos != 0)
@@ -698,10 +705,12 @@ bool RE2::Match(const StringPiece& text,
       if (can_one_pass && text.size() <= 4096 &&
           (ncap > 1 || text.size() <= 8)) {
         skipped_test = true;
+        //std::cout<<"skip DFA because of can_one_pass"<<std::endl; 
         break;
       }
       if (can_bit_state && text.size() <= bit_state_text_max && ncap > 1) {
         skipped_test = true;
+        //std::cout<<"skip DFA because of can_bit_state"<<std::endl; 
         break;
       }
       if (!prog_->SearchDFA(subtext, text, anchor, kind,
@@ -713,6 +722,7 @@ bool RE2::Match(const StringPiece& text,
                        << "list count " << prog_->list_count();
           // Fall back to NFA below.
           skipped_test = true;
+          //std::cout<<"skip DFA because of dfa_failed"<<std::endl; 
           break;
         }
         return false;
@@ -721,6 +731,7 @@ bool RE2::Match(const StringPiece& text,
   }
 
   if (!skipped_test && ncap <= 1) {
+    //std::cout<<"we are okay now no more actions"<<std::endl;
     // We know exactly where it matches.  That's enough.
     if (ncap == 1)
       submatch[0] = match;
@@ -740,12 +751,14 @@ bool RE2::Match(const StringPiece& text,
     }
 
     if (can_one_pass && anchor != Prog::kUnanchored) {
+      //std::cout<<"try get matching from SearchOnePass"<<std::endl;
       if (!prog_->SearchOnePass(subtext1, text, anchor, kind, submatch, ncap)) {
         if (!skipped_test && options_.log_errors())
           LOG(ERROR) << "SearchOnePass inconsistency";
         return false;
       }
     } else if (can_bit_state && subtext1.size() <= bit_state_text_max) {
+      //std::cout<<"try get matching from SearchBitState"<<std::endl;
       if (!prog_->SearchBitState(subtext1, text, anchor,
                                  kind, submatch, ncap)) {
         if (!skipped_test && options_.log_errors())
@@ -753,6 +766,239 @@ bool RE2::Match(const StringPiece& text,
         return false;
       }
     } else {
+      //std::cout<<"try get submatching from SearchNFA"<<std::endl;
+      if (!prog_->SearchNFA(subtext1, text, anchor, kind, submatch, ncap)) {
+        if (!skipped_test && options_.log_errors())
+          LOG(ERROR) << "SearchNFA inconsistency";
+        return false;
+      }
+    }
+  }
+
+  // Adjust overall match for required prefix that we stripped off.
+  if (prefixlen > 0 && nsubmatch > 0)
+    submatch[0] = StringPiece(submatch[0].data() - prefixlen,
+                              submatch[0].size() + prefixlen);
+
+  // Zero submatches that don't exist in the regexp.
+  for (int i = ncap; i < nsubmatch; i++)
+    submatch[i] = StringPiece();
+  return true;
+}
+
+bool RE2::Match2(const StringPiece& text,
+                size_t startpos,
+                size_t endpos,
+                Anchor re_anchor,
+                StringPiece* submatch,
+                int nsubmatch) const {
+  if (!ok() || suffix_regexp_ == NULL) {
+    if (options_.log_errors())
+      LOG(ERROR) << "Invalid RE2: " << *error_;
+    return false;
+  }
+
+  if (startpos > endpos || endpos > text.size()) {
+    if (options_.log_errors())
+      LOG(ERROR) << "RE2: invalid startpos, endpos pair. ["
+                 << "startpos: " << startpos << ", "
+                 << "endpos: " << endpos << ", "
+                 << "text size: " << text.size() << "]";
+    return false;
+  }
+
+  StringPiece subtext = text;
+  subtext.remove_prefix(startpos);
+  subtext.remove_suffix(text.size() - endpos);
+  //std::cout<<"subtext of text after removing prefix and suffix: "<<subtext<<std::endl;
+
+  // Use DFAs to find exact location of match, filter out non-matches.
+
+  // Don't ask for the location if we won't use it.
+  // SearchDFA can do extra optimizations in that case.
+  StringPiece match;
+  StringPiece* matchp = &match;
+  if (nsubmatch == 0)
+    matchp = NULL;
+
+  int ncap = 1 + NumberOfCapturingGroups();
+  //std::cout<<"before changing in Match ncap: "<<ncap<<" nsubmatch: "<<nsubmatch<<std::endl;
+  if (ncap > nsubmatch)
+    ncap = nsubmatch;
+  //std::cout<<"after changing in Match ncap: "<<ncap<<" nsubmatch: "<<nsubmatch<<std::endl;
+
+  // If the regexp is anchored explicitly, must not be in middle of text.
+  if (prog_->anchor_start() && startpos != 0)
+    return false;
+  //std::cout<<"archor_start: "<<prog_->anchor_start()<<" startpos: "<<startpos<<std::endl;
+  // If the regexp is anchored explicitly, update re_anchor
+  // so that we can potentially fall into a faster case below.
+  if (prog_->anchor_start() && prog_->anchor_end())
+    re_anchor = ANCHOR_BOTH;
+  else if (prog_->anchor_start() && re_anchor != ANCHOR_BOTH)
+    re_anchor = ANCHOR_START;
+
+  // Check for the required prefix, if any.
+  size_t prefixlen = 0;
+  if (!prefix_.empty()) {
+    if (startpos != 0)
+      return false;
+    prefixlen = prefix_.size();
+    //std::cout<<"prefixlen: "<<prefixlen<<" subtext size: "<<subtext.size()<<std::endl;
+    if (prefixlen > subtext.size())
+      return false;
+    if (prefix_foldcase_) {
+      if (ascii_strcasecmp(&prefix_[0], subtext.data(), prefixlen) != 0)
+        return false;
+    } else {
+      if (memcmp(&prefix_[0], subtext.data(), prefixlen) != 0)
+        return false;
+    }
+    subtext.remove_prefix(prefixlen);
+    // If there is a required prefix, the anchor must be at least ANCHOR_START.
+    if (re_anchor != ANCHOR_BOTH)
+      re_anchor = ANCHOR_START;
+  }
+
+  Prog::Anchor anchor = Prog::kUnanchored;
+  Prog::MatchKind kind = Prog::kFirstMatch;
+  if (options_.longest_match())
+    kind = Prog::kLongestMatch;
+  bool skipped_test = false;
+
+  bool can_one_pass = (is_one_pass_ && ncap <= Prog::kMaxOnePassCapture);
+
+  // SearchBitState allocates a bit vector of size prog_->size() * text.size().
+  // It also allocates a stack of 3-word structures which could potentially
+  // grow as large as prog_->size() * text.size() but in practice is much
+  // smaller.
+  // Conditions for using SearchBitState:
+  const int MaxBitStateProg = 500;   // prog_->size() <= Max.
+  const int MaxBitStateVector = 256*1024;  // bit vector size <= Max (bits)
+  bool can_bit_state = prog_->size() <= MaxBitStateProg;
+  size_t bit_state_text_max = MaxBitStateVector / prog_->size();
+
+  bool dfa_failed = false;
+  switch (re_anchor) {
+    default:
+    case UNANCHORED: {
+      if (!prog_->SearchDFA(subtext, text, anchor, kind,
+                            matchp, &dfa_failed, NULL)) {
+        if (dfa_failed) {
+          if (options_.log_errors())
+            LOG(ERROR) << "DFA out of memory: size " << prog_->size() << ", "
+                       << "bytemap range " << prog_->bytemap_range() << ", "
+                       << "list count " << prog_->list_count();
+          // Fall back to NFA below.
+          skipped_test = true;
+          break;
+        }
+        return false;
+      }
+      if (matchp == NULL)  // Matched.  Don't care where
+        return true;
+      // SearchDFA set match[0].end() but didn't know where the
+      // match started.  Run the regexp backward from match[0].end()
+      // to find the longest possible match -- that's where it started.
+      Prog* prog = ReverseProg();
+      if (prog == NULL)
+        return false;
+      if (!prog->SearchDFA(match, text, Prog::kAnchored,
+                           Prog::kLongestMatch, &match, &dfa_failed, NULL)) {
+        if (dfa_failed) {
+          if (options_.log_errors())
+            LOG(ERROR) << "DFA out of memory: size " << prog_->size() << ", "
+                       << "bytemap range " << prog_->bytemap_range() << ", "
+                       << "list count " << prog_->list_count();
+          // Fall back to NFA below.
+          skipped_test = true;
+          break;
+        }
+        if (options_.log_errors())
+          LOG(ERROR) << "SearchDFA inconsistency";
+        return false;
+      }
+      break;
+    }
+
+    case ANCHOR_BOTH:
+    case ANCHOR_START:
+      if (re_anchor == ANCHOR_BOTH)
+        kind = Prog::kFullMatch;
+      anchor = Prog::kAnchored;
+
+      // If only a small amount of text and need submatch
+      // information anyway and we're going to use OnePass or BitState
+      // to get it, we might as well not even bother with the DFA:
+      // OnePass or BitState will be fast enough.
+      // On tiny texts, OnePass outruns even the DFA, and
+      // it doesn't have the shared state and occasional mutex that
+      // the DFA does.
+      if (can_one_pass && text.size() <= 4096 &&
+          (ncap > 1 || text.size() <= 8)) {
+//        skipped_test = true;
+        //std::cout<<"be able to skip DFA because of can_one_pass but actually NOT"<<std::endl; 
+//        break;
+      }
+      if (can_bit_state && text.size() <= bit_state_text_max && ncap > 1) {
+//        skipped_test = true;
+        //std::cout<<"be able to skip DFA because of can_bit_state but actually NOT"<<std::endl; 
+//        break;
+      }
+      if (!prog_->SearchDFA(subtext, text, anchor, kind,
+                            &match, &dfa_failed, NULL)) {
+        if (dfa_failed) {
+          if (options_.log_errors())
+            LOG(ERROR) << "DFA out of memory: size " << prog_->size() << ", "
+                       << "bytemap range " << prog_->bytemap_range() << ", "
+                       << "list count " << prog_->list_count();
+          // Fall back to NFA below.
+          skipped_test = true;
+          //std::cout<<"skip DFA because of dfa_failed"<<std::endl; 
+          break;
+        }
+        return false;
+      }
+      break;
+  }
+
+  if (!skipped_test && ncap <= 1) {
+    //std::cout<<"we are okay now no more actions"<<std::endl;
+    // We know exactly where it matches.  That's enough.
+    if (ncap == 1)
+      submatch[0] = match;
+  } else {
+    StringPiece subtext1;
+    if (skipped_test) {
+      // DFA ran out of memory or was skipped:
+      // need to search in entire original text.
+      subtext1 = subtext;
+    } else {
+      // DFA found the exact match location:
+      // let NFA run an anchored, full match search
+      // to find submatch locations.
+      subtext1 = match;
+      anchor = Prog::kAnchored;
+      kind = Prog::kFullMatch;
+    }
+
+    if (can_one_pass && anchor != Prog::kUnanchored) {
+      //std::cout<<"try get matching from SearchOnePass"<<std::endl;
+      if (!prog_->SearchOnePass(subtext1, text, anchor, kind, submatch, ncap)) {
+        if (!skipped_test && options_.log_errors())
+          LOG(ERROR) << "SearchOnePass inconsistency";
+        return false;
+      }
+    } else if (can_bit_state && subtext1.size() <= bit_state_text_max) {
+      //std::cout<<"try get matching from SearchBitState"<<std::endl;
+      if (!prog_->SearchBitState(subtext1, text, anchor,
+                                 kind, submatch, ncap)) {
+        if (!skipped_test && options_.log_errors())
+          LOG(ERROR) << "SearchBitState inconsistency";
+        return false;
+      }
+    } else {
+      //std::cout<<"try get submatching from SearchNFA"<<std::endl;
       if (!prog_->SearchNFA(subtext1, text, anchor, kind, submatch, ncap)) {
         if (!skipped_test && options_.log_errors())
           LOG(ERROR) << "SearchNFA inconsistency";
@@ -802,7 +1048,7 @@ bool RE2::DoMatch(const StringPiece& text,
     heapvec = vec;
   }
 
-  if (!Match(text, 0, text.size(), anchor, vec, nvec)) {
+  if (!Match2(text, 0, text.size(), anchor, vec, nvec)) {
     delete[] heapvec;
     return false;
   }

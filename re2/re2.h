@@ -288,6 +288,7 @@ class RE2 {
   // Returns entire_regexp_ so that callers don't need
   // to know about prefix_ and prefix_foldcase_.
   re2::Regexp* Regexp() const { return entire_regexp_; }
+  re2::Prog* getProg() const { return prog_; }
 
   /***** The useful part: the matching interface *****/
 
@@ -498,6 +499,13 @@ class RE2 {
   // whether submatch i matched the empty string or did not match:
   // either way, match[i].data() == NULL.
   bool Match(const StringPiece& text,
+             size_t startpos,
+             size_t endpos,
+             Anchor anchor,
+             StringPiece *match,
+             int nmatch) const;
+
+  bool Match2(const StringPiece& text,
              size_t startpos,
              size_t endpos,
              Anchor anchor,

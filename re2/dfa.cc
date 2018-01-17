@@ -35,7 +35,7 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
-
+#include <iostream>
 #include "util/logging.h"
 #include "util/mix.h"
 #include "util/mutex.h"
@@ -102,6 +102,7 @@ class DFA {
   // Returns the number of states built.
   // FOR TESTING OR EXPERIMENTAL PURPOSES ONLY.
   int BuildAllStates(const Prog::DFAStateCallback& cb);
+  int BuildAllStatesAnchored(const Prog::DFAStateCallback& cb);
 
   // Computes min and max for matching strings.  Won't return strings
   // bigger than maxlen.
@@ -1317,6 +1318,11 @@ inline bool DFA::InlinedSearchLoop(SearchParams* params,
                                    bool have_firstbyte,
                                    bool want_earliest_match,
                                    bool run_forward) {
+  /*std::cout<<"args InlinedSearchLoop: "<<std::endl;
+  std::cout<<"have_firstbyte: "<<have_firstbyte<<std::endl;
+  std::cout<<"want_earliest_match: "<<want_earliest_match<<std::endl;
+  std::cout<<"run_forward: "<<run_forward<<std::endl;
+  */
   State* start = params->start;
   const uint8_t* bp = BytePtr(params->text.begin());  // start of text
   const uint8_t* p = bp;                              // text scanning point
@@ -1354,6 +1360,16 @@ inline bool DFA::InlinedSearchLoop(SearchParams* params,
     }
   }
 
+  std::cout<<"initial: "<<s<<" isMatch: "<<s->IsMatch()<<std::endl;
+  /*int ln=prog_->bytemap_range();
+  for (int b = 0; b < ln + 1; b++){
+      State* n=s->next_[b].load(std::memory_order_acquire);
+      if(n==DeadState)
+        std::cout<<"b: "<<b<<" next is deadstate"<<std::endl;
+      else
+        std::cout<<"b: "<<b<<" next is "<<n<<std::endl;
+  }
+  */
   while (p != ep) {
     if (ExtraDebug)
       fprintf(stderr, "@%td: %s\n",
@@ -1384,6 +1400,7 @@ inline bool DFA::InlinedSearchLoop(SearchParams* params,
     else
       c = *--p;
 
+    //std::cout<<"get byte: "<<c<<std::endl;
     // Note that multiple threads might be consulting
     // s->next_[bytemap[c]] simultaneously.
     // RunStateOnByte takes care of the appropriate locking,
@@ -1443,16 +1460,24 @@ inline bool DFA::InlinedSearchLoop(SearchParams* params,
         }
       }
     }
+   
+    /*if(ns!=NULL) 
+        std::cout<<s<<" byte: "<<c<<" next: "<<ns<<" next isMatch: "<<ns->IsMatch()<<std::endl;
+    else
+        std::cout<<s<<" byte: "<<c<<" next: NULL"<<" next isMatch: "<<ns->IsMatch()<<std::endl;*/
     if (ns <= SpecialStateMax) {
       if (ns == DeadState) {
+        std::cout<<s<<" byte: "<<c<<" next: DeadState"<<" isMatch: 0"<<std::endl;
         params->ep = reinterpret_cast<const char*>(lastmatch);
         return matched;
       }
       // FullMatchState
+      std::cout<<"next is fullmatchstate"<<std::endl;
       params->ep = reinterpret_cast<const char*>(ep);
       return true;
     }
 
+    std::cout<<s<<" byte: "<<c<<" next: "<<ns<<" isMatch: "<<ns->IsMatch()<<std::endl;
     s = ns;
     if (s->IsMatch()) {
       matched = true;
@@ -1516,16 +1541,21 @@ inline bool DFA::InlinedSearchLoop(SearchParams* params,
       }
     }
   }
+ 
+
   if (ns <= SpecialStateMax) {
     if (ns == DeadState) {
+      std::cout<<s<<" lastbyte: "<<lastbyte<<" next: DeadState"<<" isMatch: 0"<<std::endl;
       params->ep = reinterpret_cast<const char*>(lastmatch);
       return matched;
     }
     // FullMatchState
+    std::cout<<s<<" lastbyte: "<<lastbyte<<" next: FullMatchState"<<" isMatch: 1"<<std::endl;
     params->ep = reinterpret_cast<const char*>(ep);
     return true;
   }
 
+  std::cout<<s<<" lastbyte: "<<lastbyte<<" next: "<<ns<<" isMatch: "<<ns->IsMatch()<<std::endl;
   s = ns;
   if (s->IsMatch()) {
     matched = true;
@@ -1696,6 +1726,16 @@ bool DFA::AnalyzeSearch(SearchParams* params) {
 
   params->start = info->start;
   params->firstbyte = info->firstbyte.load(std::memory_order_acquire);
+/**  std::cout<<"0000 In AnalyzeSearch(...) initial state: "<<params->start<<" isMatch: "<<params->start->IsMatch()<<std::endl;
+  int ln=prog_->bytemap_range();
+  for (int b = 0; b < ln + 1; b++){
+    State* n=params->start->next_[b].load(std::memory_order_acquire);
+    if(n==DeadState)
+        std::cout<<"b: "<<b<<" next is deadstate"<<std::endl;
+    else
+        std::cout<<"b: "<<b<<" next is "<<n<<std::endl;
+  }
+*/
 
   return true;
 }
@@ -1733,6 +1773,7 @@ bool DFA::AnalyzeSearchHelper(SearchParams* params, StartInfo* info,
     return true;
   }
 
+  //std::cout<<"0000 In AnalyzeParamsHelper(...) info initial state: "<<info->start<<" isMatch: "<<info->start->IsMatch()<<std::endl;
   // Compute info->firstbyte by running state on all
   // possible byte values, looking for a single one that
   // leads to a different state.
@@ -1754,6 +1795,16 @@ bool DFA::AnalyzeSearchHelper(SearchParams* params, StartInfo* info,
       break;
     }
   }
+  /*
+  int ln=prog_->bytemap_range();
+  for (int b = 0; b < ln + 1; b++){
+    State* n=info->start->next_[b].load(std::memory_order_acquire);
+    if(n==DeadState)
+       std::cout<<"b: "<<b<<" next is deadstate"<<std::endl;
+    else
+       std::cout<<"b: "<<b<<" next is "<<n<<std::endl;
+  }
+  */
 
   // Synchronize with "quick check" above.
   info->firstbyte.store(firstbyte, std::memory_order_release);
@@ -1790,6 +1841,21 @@ bool DFA::Search(const StringPiece& text,
   params.run_forward = run_forward;
   params.matches = matches;
 
+  /*
+  if(params.start!=NULL)
+    std::cout<<"0000 In Search(...) initial state: "<<params.start<<" isMatch: "<<params.start->IsMatch()<<std::endl;
+  std::cout<<"0000 In Search(...) initial state is NULL"<<std::endl;
+  */
+/*
+  int ln=prog_->bytemap_range();
+  for (int b = 0; b < ln + 1; b++){
+    State* n=params.start->next_[b].load(std::memory_order_acquire);
+    if(n==DeadState)
+        std::cout<<"b: "<<b<<" next is deadstate"<<std::endl;
+    else 
+        std::cout<<"b: "<<b<<" next is "<<n<<std::endl;
+  }
+*/
   if (!AnalyzeSearch(&params)) {
     *failed = true;
     return false;
@@ -1803,6 +1869,16 @@ bool DFA::Search(const StringPiece& text,
       *epp = text.end();
     return true;
   }
+  /*std::cout<<"In Search(...) initial state: "<<params.start<<" isMatch: "<<params.start->IsMatch()<<std::endl;
+  int ln=prog_->bytemap_range();
+  for (int b = 0; b < ln + 1; b++){
+    State* n=params.start->next_[b].load(std::memory_order_acquire);
+    if(n==DeadState)
+        std::cout<<"b: "<<b<<" next is deadstate"<<std::endl;
+    else 
+        std::cout<<"b: "<<b<<" next is "<<n<<std::endl;
+  }*/
+
   if (ExtraDebug)
     fprintf(stderr, "start %s\n", DumpState(params.start).c_str());
   bool ret = FastSearchLoop(&params);
@@ -1904,6 +1980,18 @@ bool Prog::SearchDFA(const StringPiece& text, const StringPiece& const_context,
 
   DFA* dfa = GetDFA(kind);
   const char* ep;
+/*  std::cout<<"match0: "<<match0->as_string()<<std::endl;
+  std::cout<<"args for dfa search: "<<std::endl;
+  std::cout<<"arg text: "<<text<<std::endl;
+  std::cout<<"arg context: "<<context<<std::endl;
+  std::cout<<"arg anchored: "<<anchored<<std::endl;
+  std::cout<<"arg want_earliest_match: "<<want_earliest_match<<std::endl;
+  std::cout<<"arg !reversed_: "<<!reversed_<<std::endl;
+  std::cout<<"arg pointer failed value: "<<*failed<<std::endl;
+  std::cout<<"arg pointer ep: "<<std::endl;
+  bool isNull=matches==NULL;
+  std::cout<<"arg pointer matches is NULL: "<<isNull<<std::endl;
+  */
   bool matched = dfa->Search(text, context, anchored,
                              want_earliest_match, !reversed_,
                              failed, &ep, matches);
@@ -1937,10 +2025,21 @@ int DFA::BuildAllStates(const Prog::DFAStateCallback& cb) {
   RWLocker l(&cache_mutex_);
   SearchParams params(StringPiece(), StringPiece(), &l);
   params.anchored = false;
+  //params.anchored = true;
   if (!AnalyzeSearch(&params) ||
       params.start == NULL ||
       params.start == DeadState)
     return 0;
+
+    /*std::cout<<"0000 In BuildAllStates(...) initial state: "<<params.start<<" isMatch: "<<params.start->IsMatch()<<std::endl;
+    int ln=prog_->bytemap_range();
+    for (int b = 0; b < ln + 1; b++){
+        State* n=params.start->next_[b].load(std::memory_order_acquire);
+        if(n==DeadState)
+            std::cout<<"b: "<<b<<" next is deadstate"<<std::endl;
+        else 
+            std::cout<<"b: "<<b<<" next is "<<n<<std::endl;
+    }*/
 
   // Add start state to work queue.
   // Note that any State* that we handle here must point into the cache,
@@ -1995,8 +2094,89 @@ int DFA::BuildAllStates(const Prog::DFAStateCallback& cb) {
   return static_cast<int>(m.size());
 }
 
+// Build out all states for kFullMatch in DFA.  Returns number of states.
+int DFA::BuildAllStatesAnchored(const Prog::DFAStateCallback& cb) {
+  if (!ok())
+    return 0;
+
+  // Pick out start state for unanchored search
+  // at beginning of text.
+  RWLocker l(&cache_mutex_);
+  SearchParams params(StringPiece(), StringPiece(), &l);
+  //params.anchored = false;
+  params.anchored = true;
+  if (!AnalyzeSearch(&params) ||
+      params.start == NULL ||
+      params.start == DeadState)
+    return 0;
+
+    /*std::cout<<"0000 In BuildAllStates(...) initial state: "<<params.start<<" isMatch: "<<params.start->IsMatch()<<std::endl;
+    int ln=prog_->bytemap_range();
+    for (int b = 0; b < ln + 1; b++){
+        State* n=params.start->next_[b].load(std::memory_order_acquire);
+        if(n==DeadState)
+            std::cout<<"b: "<<b<<" next is deadstate"<<std::endl;
+        else 
+            std::cout<<"b: "<<b<<" next is "<<n<<std::endl;
+    }*/
+
+  // Add start state to work queue.
+  // Note that any State* that we handle here must point into the cache,
+  // so we can simply depend on pointer-as-a-number hashing and equality.
+  std::unordered_map<State*, int> m;
+  std::deque<State*> q;
+  m.emplace(params.start, static_cast<int>(m.size()));
+  q.push_back(params.start);
+
+  // Compute the input bytes needed to cover all of the next pointers.
+  int nnext = prog_->bytemap_range() + 1;  // + 1 for kByteEndText slot
+  std::vector<int> input(nnext);
+  for (int c = 0; c < 256; c++) {
+    int b = prog_->bytemap()[c];
+    while (c < 256-1 && prog_->bytemap()[c+1] == b)
+      c++;
+    input[b] = c;
+  }
+  //std::cout<<"prog bytemap range: "<<prog_->bytemap_range()<<std::endl;
+  input[prog_->bytemap_range()] = kByteEndText;
+
+  // Scratch space for the output.
+  std::vector<int> output(nnext);
+
+  // Flood to expand every state.
+  bool oom = false;
+  while (!q.empty()) {
+    State* s = q.front();
+    q.pop_front();
+    for (int c : input) {
+      State* ns = RunStateOnByteUnlocked(s, c);
+      if (ns == NULL) {
+        oom = true;
+        break;
+      }
+      if (ns == DeadState) {
+        output[ByteMap(c)] = -1;
+        continue;
+      }
+      if (m.find(ns) == m.end()) {
+        m.emplace(ns, static_cast<int>(m.size()));
+        q.push_back(ns);
+      }
+      output[ByteMap(c)] = m[ns];
+    }
+    if (cb)
+      cb(oom ? NULL : output.data(),
+         s == FullMatchState || s->IsMatch());
+    if (oom)
+      break;
+  }
+
+  return static_cast<int>(m.size());
+}
 // Build out all states in DFA for kind.  Returns number of states.
 int Prog::BuildEntireDFA(MatchKind kind, const DFAStateCallback& cb) {
+  if(kind==kFullMatch)
+    return GetDFA(kind)->BuildAllStatesAnchored(cb);
   return GetDFA(kind)->BuildAllStates(cb);
 }
 

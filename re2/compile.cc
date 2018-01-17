@@ -12,6 +12,7 @@
 #include <string.h>
 #include <unordered_map>
 #include <utility>
+#include <iostream>
 
 #include "util/logging.h"
 #include "util/utf.h"
@@ -1173,6 +1174,7 @@ Prog* Compiler::Compile(Regexp* re, bool reversed, int64_t max_mem) {
   } else {
     c.prog_->set_anchor_start(is_anchor_start);
     c.prog_->set_anchor_end(is_anchor_end);
+    //std::cout<<"set anchor start and end----"<<std::endl;
   }
 
   c.prog_->set_start(all.begin);
@@ -1248,6 +1250,7 @@ Prog* Compiler::CompileSet(Regexp* re, RE2::Anchor anchor, int64_t max_mem) {
 
   c.prog_->set_anchor_start(true);
   c.prog_->set_anchor_end(true);
+  //std::cout<<"in CompileSet set anchor start and end ---------"<<std::endl;
 
   if (anchor == RE2::UNANCHORED) {
     // Prepend .* or else the expression will effectively be anchored.
