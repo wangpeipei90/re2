@@ -1,4 +1,7 @@
-This is the source code repository for RE2, a regular expression library.
+This is the source code repository for RE2, a regular expression library. I modified it for building static DFA and dynamic DFAs.
+getDFA.ccp can accept one argument for Static DFA or two arguments for Dynamic DFA.
+To compile getDFA use the following command:
+g++ -v getDFA.cpp -g -o getDFA -std=c++ -pthread -I/home/peipei/re2/ -I/usr/local/include -O3 -L/home/peipei/re2/obj -lre2
 
 For documentation about how to install and use RE2,
 visit https://github.com/google/re2/.
