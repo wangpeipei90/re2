@@ -1911,7 +1911,8 @@ DFA* Prog::GetDFA(MatchKind kind) {
   } else {
     std::call_once(dfa_longest_once_, [](Prog* prog) {
       if (!prog->reversed_)
-        prog->dfa_longest_ = new DFA(prog, kLongestMatch, prog->dfa_mem_ / 2);
+        //prog->dfa_longest_ = new DFA(prog, kLongestMatch, prog->dfa_mem_ / 2);
+        prog->dfa_longest_ = new DFA(prog, kLongestMatch, prog->dfa_mem_);
       else
         prog->dfa_longest_ = new DFA(prog, kLongestMatch, prog->dfa_mem_);
     }, this);

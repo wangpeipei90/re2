@@ -63,6 +63,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }   
     string pattern(argv[1]);
+//    std::cout<<"pattern length: "<<pattern.length()<<std::endl;
     re2::RE2 ree(pattern);
     if(!ree.ok())
         return 1;
@@ -71,6 +72,7 @@ int main(int argc, char *argv[]) {
         getDFA(ree, re2::Prog::kFullMatch);
     }else{ //argc==3
         string input(argv[2]);
+ //       std::cout<<"input length: "<<input.length()<<std::endl;
         matchDFA(ree,input);
     }
     return 0;

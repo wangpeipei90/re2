@@ -1208,7 +1208,8 @@ Prog* Compiler::Finish() {
 
   // Record remaining memory for DFA.
   if (max_mem_ <= 0) {
-    prog_->set_dfa_mem(1<<20);
+    //prog_->set_dfa_mem(1<<20);
+    prog_->set_dfa_mem(1<<28);
   } else {
     int64_t m = max_mem_ - sizeof(Prog) - prog_->size_*sizeof(Prog::Inst);
     if (m < 0)
