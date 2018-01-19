@@ -289,6 +289,7 @@ class RE2 {
   // to know about prefix_ and prefix_foldcase_.
   re2::Regexp* Regexp() const { return entire_regexp_; }
   re2::Prog* getProg() const { return prog_; }
+  re2::Prog* ReverseProg() const;
 
   /***** The useful part: the matching interface *****/
 
@@ -727,7 +728,6 @@ class RE2 {
                const Arg* const args[],
                int n) const;
 
-  re2::Prog* ReverseProg() const;
 
   string        pattern_;          // string regular expression
   Options       options_;          // option flags
