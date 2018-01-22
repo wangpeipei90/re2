@@ -1,0 +1,11 @@
+##g++ -v TestCorpus.cpp -g -o testCorpus_all -std=c++11 -pthread -I/Users/peipei/RegexAnalysis/re2-master -I/usr/local/include -O3 -g -pthread -L/Users/peipei/RegexAnalysis/re2-master/obj -lre2
+
+##//usage: ./testCorpus_all filename 1(kFirstMatch)|2(kFullMatch)|3(kManyMatch)|4(kLongestMatch)
+./TestCorpus fullCorpusRegex_rinse6.txt 1 1>kFirstMatch_result 2>kFirstMatch_error
+./TestCorpus fullCorpusRegex_rinse6.txt 2 1>kFullMatch_result 2>kFullMatch_error
+./TestCorpus fullCorpusRegex_rinse6.txt 3 1>kManyMatch_result 2>kManyMatch_error
+./TestCorpus fullCorpusRegex_rinse6.txt 4 1>kLongestMatch_result 2>kLongestMatch_error
+
+g++ -c generateStr.cpp -I/home/peipei/re2 -std=c++11
+g++ generateStr.o /home/peipei/re2/obj/re2/testing/regexp_generator.o /home/peipei/re2/obj/re2/testing/string_generator.o /home/peipei/re2/obj/util/rune.o /home/peipei/re2/obj/util/strutil.o -o generateStr
+./generateStr
