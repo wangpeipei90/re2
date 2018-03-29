@@ -201,6 +201,7 @@ void RE2::Init(const StringPiece& pattern, const Options& options) {
     return;
   }
 
+  //std::cout<<"entire_regexp_ after Regexp::Parse: "<<entire_regexp_->ToString()<<std::endl;
   re2::Regexp* suffix;
   if (entire_regexp_->RequiredPrefix(&prefix_, &prefix_foldcase_, &suffix)){
     suffix_regexp_ = suffix;

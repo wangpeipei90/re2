@@ -63,8 +63,11 @@ int main(int argc, char *argv[]) {
         return 1;
     }   
     string pattern(argv[1]);
+    //std::cout<<"pattern: "<<pattern<<std::endl;
 //    std::cout<<"pattern length: "<<pattern.length()<<std::endl;
     re2::RE2 ree(pattern);
+ //   std::cout<<"re2 pattern: "<<ree.pattern()<<std::endl;
+  //  std::cout<<"re2 pattern length: "<<ree.pattern().length()<<std::endl;
     if(!ree.ok())
         return 1;
 
@@ -75,5 +78,47 @@ int main(int argc, char *argv[]) {
  //       std::cout<<"input length: "<<input.length()<<std::endl;
         matchDFA(ree,input);
     }
+
+/*    re2::RE2 test("(?i)^AS([0-9]+)$");
+    std::cout<<"anchored regexp: "<<test.Regexp()->ToString()<<std::endl;
+    std::cout<<"anchored flags: "<<test.Regexp()->parse_flags()<<std::endl;
+
+    std::cout<<"anchored firstmatch"<<std::endl;
+    getDFA(test,re2::Prog::kFirstMatch);
+    std::cout<<"anchored fullmatch"<<std::endl;
+    getDFA(test,re2::Prog::kFullMatch);
+    std::cout<<"anchored fullmatch as101"<<std::endl;
+    matchDFA(test,"as101");
+    std::cout<<"anchored fullmatch AS101"<<std::endl;
+    matchDFA(test,"AS101");
+
+    re2::RE2 test1("(?i)AS([0-9]+)$");
+    std::cout<<"endanchored regexp: "<<test1.Regexp()->ToString()<<std::endl;
+    std::cout<<"endanchored flags: "<<test1.Regexp()->parse_flags()<<std::endl;
+
+    std::cout<<"endanchored firstmatch"<<std::endl;
+    getDFA(test1,re2::Prog::kFirstMatch);
+    std::cout<<"endanchored fullmatch"<<std::endl;
+    getDFA(test1,re2::Prog::kFullMatch);
+    std::cout<<"endanchored fullmatch as101"<<std::endl;
+    matchDFA(test1,"as101");
+    std::cout<<"endanchored fullmatch AS101"<<std::endl;
+    matchDFA(test1,"AS101");
+    matchDFA(test1,"A\u017f101");
+
+    re2::RE2 test2("(?i)AS([0-9]+)");
+    std::cout<<"unanchored regexp: "<<test2.Regexp()->ToString()<<std::endl;
+    std::cout<<"unanchored flags: "<<test2.Regexp()->parse_flags()<<std::endl;
+
+    std::cout<<"unanchored firstmatch"<<std::endl;
+    getDFA(test2,re2::Prog::kFirstMatch);
+    std::cout<<"unanchored fullmatch"<<std::endl;
+    getDFA(test2,re2::Prog::kFullMatch);
+    std::cout<<"unanchored fullmatch as101"<<std::endl;
+    matchDFA(test2,"as101");
+    std::cout<<"unanchored fullmatch AS101"<<std::endl;
+    matchDFA(test2,"AS101");
+    matchDFA(test2,"A\u017f101");
+*/
     return 0;
 }

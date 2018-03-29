@@ -35,6 +35,8 @@
 #include "re2/unicode_groups.h"
 #include "re2/walker-inl.h"
 
+#include <iostream>
+using namespace std;
 #if defined(RE2_USE_ICU)
 #include "unicode/uniset.h"
 #include "unicode/unistr.h"
@@ -217,6 +219,7 @@ Regexp::ParseState::~ParseState() {
 // a more complex expression.
 // If it is a CharClassBuilder, converts into a CharClass.
 Regexp* Regexp::ParseState::FinishRegexp(Regexp* re) {
+  //std::cout<<"before finishRegexp: "<<re->ToString()<<std::endl;
   if (re == NULL)
     return NULL;
   re->down_ = NULL;
@@ -228,6 +231,7 @@ Regexp* Regexp::ParseState::FinishRegexp(Regexp* re) {
     delete ccb;
   }
 
+//  std::cout<<"after finishRegexp: "<<re->ToString()<<std::endl;
   return re;
 }
 
@@ -396,6 +400,8 @@ static void AddFoldedRange(CharClassBuilder* cc, Rune lo, Rune hi, int depth) {
 bool Regexp::ParseState::PushLiteral(Rune r) {
   // Do case folding if needed.
   if ((flags_ & FoldCase) && CycleFoldRune(r) != r) {
+    //std::cout<<"did case folding for Rune: "<<r<<std::endl;
+
     Regexp* re = new Regexp(kRegexpCharClass, flags_ & ~FoldCase);
     re->ccb_ = new CharClassBuilder;
     Rune r1 = r;
@@ -404,6 +410,7 @@ bool Regexp::ParseState::PushLiteral(Rune r) {
         re->ccb_->AddRange(r, r);
       }
       r = CycleFoldRune(r);
+//      std::cout<<"case folding is: "<<r<<std::endl;
     } while (r != r1);
     return PushRegexp(re);
   }
@@ -504,6 +511,7 @@ bool Regexp::ParseState::PushRepeatOp(RegexpOp op, const StringPiece& s,
   re->sub()[0] = FinishRegexp(stacktop_);
   re->simple_ = re->ComputeSimple();
   stacktop_ = re;
+//  std::cout<<"PushRepeatOp stacktop_: "<<stacktop_->ToString()<<std::endl;
   return true;
 }
 
@@ -587,6 +595,7 @@ bool Regexp::ParseState::PushRepetition(int min, int max,
   re->sub()[0] = FinishRegexp(stacktop_);
   re->simple_ = re->ComputeSimple();
   stacktop_ = re;
+//  std::cout<<"PushRepetition stacktop_: "<<stacktop_->ToString()<<std::endl;
   if (min >= 2 || max >= 2) {
     RepetitionWalker w;
     if (w.Walk(stacktop_, kMaxRepeat) == 0) {
@@ -2203,6 +2212,7 @@ Regexp* Regexp::Parse(const StringPiece& s, ParseFlags global_flags,
   if (status == NULL)
     status = &xstatus;
 
+  //std::cout<<"global flags: "<<global_flags<<std::endl;
   ParseState ps(global_flags, s, status);
   StringPiece t = s;
 
@@ -2229,22 +2239,29 @@ Regexp* Regexp::Parse(const StringPiece& s, ParseFlags global_flags,
   StringPiece lastunary = StringPiece();
   while (t.size() > 0) {
     StringPiece isunary = StringPiece();
+    //std::cout<<"t[0] is: "<<t[0]<<std::endl;
     switch (t[0]) {
       default: {
+        //std::cout<<t[0]<<" in default"<<std::endl;
         Rune r;
         if (StringPieceToRune(&r, &t, status) < 0)
           return NULL;
         if (!ps.PushLiteral(r))
           return NULL;
+        //std::cout<<"stringPiece in default: "<<t<<std::endl;
         break;
       }
 
       case '(':
         // "(?" introduces Perl escape.
+        //std::cout<<"print ParseState flags: "<<ps.flags()<<std::endl;
         if ((ps.flags() & PerlX) && (t.size() >= 2 && t[1] == '?')) {
           // Flag changes and non-capturing groups.
+        //std::cout<<"print stringPiece before ParsePerlFlags: "<<t<<std::endl;
           if (!ps.ParsePerlFlags(&t))
             return NULL;
+        //std::cout<<"print ParseState flags after ParsePerlFlags: "<<ps.flags()<<std::endl;
+        //std::cout<<"print stringPiece after ParsePerlFlags: "<<t<<std::endl;
           break;
         }
         if (ps.flags() & NeverCapture) {
@@ -2288,6 +2305,7 @@ Regexp* Regexp::Parse(const StringPiece& s, ParseFlags global_flags,
         break;
 
       case '[': {  // Character class.
+        //std::cout<<t[0]<<" in ["<<std::endl;
         Regexp* re;
         if (!ps.ParseCharClass(&t, &re, status))
           return NULL;
